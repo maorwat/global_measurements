@@ -178,7 +178,9 @@ class Collimators():
         
         # TODO: improve
         df = pd.concat([self.ref_col_blm_df, self.ref_col_df.drop(self.ref_col_df.columns[0], axis=1)], axis=1)
-
+        # Normalize the 'loss' column
+        df['loss'] = df['loss'] / df['loss'].max()
+        
         # Calculate the difference in 'gap'
         gap_diff = df['gap'].diff().abs()  # Get the absolute difference
 
@@ -206,19 +208,37 @@ class Collimators():
         # List to store peak indices relative to df1
         peak_indices = []
 
-        # Process each segment and get the index of the highest peak in each
-        for segment, segment_start in zip(dfs, segment_start_indices):
+        # Identify valid start and end range by skipping empty (no peaks) segments
+        valid_start = 0
+        valid_end = len(dfs)
+
+        # Skip empty segments at the start
+        for i, segment in enumerate(dfs):
+            peaks, _ = find_peaks(segment.loss, prominence=0.01)
+            if peaks.size > 0:
+                valid_start = i
+                break
+
+        # Skip empty segments at the end
+        for i, segment in enumerate(reversed(dfs)):
+            peaks, _ = find_peaks(segment.loss, prominence=0.01)
+            if peaks.size > 0:
+                valid_end = len(dfs) - i
+                break
+
+        # Process only the valid range of segments
+        for i, (segment, segment_start) in enumerate(zip(dfs[valid_start:valid_end], segment_start_indices[valid_start:valid_end])):
             # Use find_peaks to locate peaks
             peaks, _ = find_peaks(segment.loss)
-
-            if peaks.size > 0:  # Ensure there are peaks to evaluate
+            
+            if peaks.size > 0:  # If peaks are found in the segment
                 # Get the index of the highest peak within the segment
                 highest_peak_idx = peaks[np.argmax(segment.loss.iloc[peaks])]
 
                 # Convert to index in df1 and store
                 peak_indices.append(segment_start + highest_peak_idx)
-            else:
-                # Handle case where no peaks are found, take the highest value
+            else:  # No peaks found in the segment
+                # Take the highest value in the segment
                 highest_peak_index = np.argmax(segment.loss)
 
                 # Convert to index in df1 and store

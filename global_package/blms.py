@@ -14,6 +14,8 @@ class BLMs():
                 end_time,
                 beam,
                 spark,
+                option=1,
+                filter_out_collimators=True,
                 peaks=None,
                 threshold=0.8,
                 bottleneck=None):
@@ -25,7 +27,9 @@ class BLMs():
         self.bottleneck = bottleneck
         self.spark = spark
         self.threshold = threshold
-        self.peaks = peaks
+        self.peaks = peaks.peaks
+        self.filter_out_collimators = filter_out_collimators
+        self.option=option
         
         self.get_blm_df()
 
@@ -62,6 +66,8 @@ class BLMs():
     
         # Drop Nans
         df_cleaned = self.blm_mqx_df.dropna(axis=1, how='all').drop('time', axis=1)
+        if self.filter_out_collimators:
+            df_cleaned = df_cleaned.loc[:, ~df_cleaned.columns.str.contains('TC|TDI')]
         # Normalise to identify noise more easily
         normalized_df = df_cleaned.copy()
         columns_to_normalize = [col for col in df_cleaned.columns if col != 'time']
@@ -70,8 +76,13 @@ class BLMs():
         noise_flags = normalized_df.apply(self.is_noise, axis=0)
         new_df = normalized_df.loc[:, noise_flags]
         # Identify highest losses at the last step of collimator gap
-        self.bottleneck = df_cleaned[new_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
-    
+        if self.option == 1:
+            self.bottleneck = normalized_df[new_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
+        elif self.option == 2:
+            self.bottleneck = df_cleaned[new_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
+        elif self.option == 3:
+            self.bottleneck = normalized_df[new_df.columns].apply(lambda col: col.max() - col.min()).idxmax()
+
     def is_noise(self, signal):
         diff = signal.max()-signal.min()
         return diff > self.threshold
