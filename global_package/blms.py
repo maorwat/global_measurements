@@ -7,82 +7,80 @@ import lossmaps as lm
 
 from global_package.utils import *
 
-class BLMs():
-    
-    def __init__(self,
-                start_time,
-                end_time,
-                beam,
-                spark,
-                option=1,
-                filter_out_collimators=True,
-                peaks=None,
-                threshold=0.8,
-                bottleneck=None):
-        
+class BLMs:
+    def __init__(self, start_time, end_time, beam, spark, option=3, 
+                 filter_out_collimators=True, peaks=None, threshold=0.8, bottleneck=None):
+        """
+        Initialize the BLMs class for Beam Loss Monitor data processing.
+
+        Parameters:
+        - start_time: Start time for data.
+        - end_time: End time for data.
+        - beam: Beam identifier 'B1H', 'B2H', 'B1V', or 'B2V'.
+        - spark: Spark session for data processing.
+        - option: Strategy for bottleneck selection (default: 3).
+        - filter_out_collimators: Whether to exclude collimator losses in bottleneck selection (default: True).
+        - peaks: Identified peaks from collimators (default: None).
+        - threshold: Noise threshold for filtering signals (default: 0.8).
+        - bottleneck: Specific bottleneck to set (default: None).
+        """
         # Convert time to UTC
         self.start_time, self.end_time = get_utc_time(start_time, end_time)
-        # Find plane and beam from the given string
+        # Parse beam and plane
         self.beam, self.plane = parse_beam_plane(beam)
-        self.bottleneck = bottleneck
+        # Set attributes
         self.spark = spark
+        self.option = option
         self.threshold = threshold
         self.peaks = peaks.peaks
         self.filter_out_collimators = filter_out_collimators
-        self.option=option
-        
+        self.bottleneck = bottleneck
+
+        # Load BLM data
         self.get_blm_df()
 
+        # Automatically find bottleneck if not provided
         if self.bottleneck is None:
             self.find_highest_losses()
-        
+
     def get_blm_df(self):
-        # TODO: improve
-        # Now pass the localized and converted timestamps to the function
+        """
+        Load BLM data and prepare the DataFrame for analysis.
+        """
         data = lm.blm.get_BLM_data(self.start_time, self.end_time, spark=self.spark)
         names = lm.blm.get_BLM_names(self.start_time, spark=self.spark)
 
         vals_df = pd.DataFrame(data['vals'].tolist(), columns=names)
-
-        # Concatenate 'timestamp' with the new DataFrame
         data_expanded = pd.concat([data['timestamp'], vals_df], axis=1)
-
         data_expanded['time'] = pd.to_datetime(data_expanded['timestamp']).astype(int) / 10**9
+        data_expanded = data_expanded.drop(columns=['timestamp']).sort_values(by='time').reset_index(drop=True)
 
-        # Drop the old timestamp column if needed
-        data_expanded = data_expanded.drop(columns=['timestamp'])
-
-        # Reorder the columns if desired
-        data_expanded = data_expanded[['time'] + [col for col in data_expanded.columns if col != 'time']]
-
-        # Sort the DataFrame by 'column_name' in increasing order
-        data_expanded = data_expanded.sort_values(by='time', ascending=True)
-
-        # Reset index if needed to maintain a clean, sequential index
-        data_expanded = data_expanded.reset_index(drop=True)
         self.blm_mqx_df = data_expanded
-        
+
     def find_highest_losses(self):
-    
-        # Drop Nans
+        """
+        Identify the bottleneck with the highest losses based on the specified option.
+        """
+        # Clean the data
         df_cleaned = self.blm_mqx_df.dropna(axis=1, how='all').drop('time', axis=1)
         if self.filter_out_collimators:
             df_cleaned = df_cleaned.loc[:, ~df_cleaned.columns.str.contains('TC|TDI')]
-        # Normalise to identify noise more easily
-        normalized_df = df_cleaned.copy()
-        columns_to_normalize = [col for col in df_cleaned.columns if col != 'time']
-        normalized_df[columns_to_normalize] = df_cleaned[columns_to_normalize] / df_cleaned[columns_to_normalize].max()
-        # Identify noise
-        noise_flags = normalized_df.apply(self.is_noise, axis=0)
-        new_df = normalized_df.loc[:, noise_flags]
-        # Identify highest losses at the last step of collimator gap
-        if self.option == 1:
-            self.bottleneck = normalized_df[new_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
-        elif self.option == 2:
-            self.bottleneck = df_cleaned[new_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
-        elif self.option == 3:
-            self.bottleneck = normalized_df[new_df.columns].apply(lambda col: col.max() - col.min()).idxmax()
 
-    def is_noise(self, signal):
-        diff = signal.max()-signal.min()
-        return diff > self.threshold
+        # Normalize the data for easier noise detection
+        normalized_df = df_cleaned / df_cleaned.max()
+        noise_flags = normalized_df.apply(self._is_noise, axis=0)
+        filtered_df = normalized_df.loc[:, noise_flags]
+
+        # Identify bottleneck based on the chosen option
+        if self.option == 1:
+            self.bottleneck = normalized_df[filtered_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
+        elif self.option == 2:
+            self.bottleneck = df_cleaned[filtered_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
+        elif self.option == 3:
+            self.bottleneck = normalized_df[filtered_df.columns].apply(lambda col: col.max() - col.min()).idxmax()
+
+    def _is_noise(self, signal):
+        """
+        Determine if a signal is noise based on the threshold.
+        """
+        return (signal.max() - signal.min()) > self.threshold

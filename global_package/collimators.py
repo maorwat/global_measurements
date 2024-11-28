@@ -20,20 +20,34 @@ class Collimators():
                 reference_collimator=None,
                 emittance=3.5e-6,
                 yaml_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
-        
+        """
+        Initialize the Collimators class for gap and loss data processing.
+
+        Parameters:
+        - start_time: Start time for data.
+        - end_time: End time for data.
+        - beam: Beam identifier 'B1H', 'B2H', 'B1V', or 'B2V'.
+        - tfs_path:
+        - spark: Spark session for data processing.
+        - gap_step:
+        - reference_collimator:
+        - emittance:
+        - yaml_path:
+        """
         # Convert time to UTC
         self.start_time, self.end_time = get_utc_time(start_time, end_time)
         
+        # Initialize attributes
         self.ldb = pytimber.LoggingDB(spark_session=spark)
-        # Path to load collimator names
         self.yaml_path = yaml_path
-        # Normalised emittance
         self.emittance = emittance
-        # Find plane and beam from the given string
-        self.beam, self.plane = parse_beam_plane(beam)
         self.gap_step = gap_step
         self.tfs_path = tfs_path
         
+        # Parse beam and plane
+        self.beam, self.plane = parse_beam_plane(beam)
+        
+        # Load necessary data
         self.load_data(reference_collimator)
         self.load_blm()
         self.find_peaks()
@@ -43,6 +57,9 @@ class Collimators():
     def load_data(self, reference_collimator):
         """
         Load and process collimator data.
+
+        Parameters:
+        - reference_collimator: 
         """
         # If reference collimator not given, find
         if reference_collimator is not None:
@@ -73,8 +90,30 @@ class Collimators():
             # Find the reference collimator
             self.process_dataframe(moved_collimators)
 
-    def find_moved_collimators(self, cols):
+    def load_data_given_ref_col(self, reference_collimator):
+        """
+        Load data for the given reference collimator.
+
+        Parameters:
+        - reference_collimator: 
+        """    
+        col = self.ldb.get(reference_collimator+':MEAS_LVDT_GD', self.start_time, self.end_time)
+
+        self.ref_col_df = pd.DataFrame({
+                        'time': col[reference_collimator+':MEAS_LVDT_GD'][0],
+                        'gap': col[reference_collimator+':MEAS_LVDT_GD'][1]
+                    })
+
+        self.ref_col_df['time'] = self.ref_col_df['time'].astype(int)
+        self.reference_collimator = reference_collimator+':MEAS_LVDT_GD'
         
+    def find_moved_collimators(self, cols):
+        """
+        Identify collimators that moved during the time interval.
+
+        Parameters:
+        - cols: Dictionary containing collimator gap data
+        """
         # Create a dataframe
         data = {'time': cols[next(iter(cols))][0]}
         moved_collimators = pd.DataFrame(data)
@@ -101,6 +140,12 @@ class Collimators():
         return moved_collimators
         
     def process_dataframe(self, df):
+        """
+        Process the DataFrame to determine the reference collimator.
+
+        Parameters:
+        - df:
+        """
         # Round all columns except 'time' to one decimal place
         columns_to_round = [col for col in df.columns if col != 'time']
         df[columns_to_round] = df[columns_to_round].round(1)
@@ -108,85 +153,52 @@ class Collimators():
         # Determine the column with the most unique values
         # Exclude 'time' column from consideration
         unique_counts = {col: df[col].nunique() for col in columns_to_round}
-        column_with_most_steps = max(unique_counts, key=unique_counts.get)
+        self.reference_collimator = max(unique_counts, key=unique_counts.get)
         
-        self.reference_collimator = column_with_most_steps
-        self.ref_col_df = df[['time', self.reference_collimator]]
-        self.ref_col_df = self.ref_col_df.rename(columns={self.reference_collimator: 'gap'})
+        # Store reference collimator data
+        self.ref_col_df = df[['time', self.reference_collimator]].rename(columns={self.reference_collimator: 'gap'})
     
-    def load_data_given_ref_col(self, reference_collimator):
-    
-        col = self.ldb.get(reference_collimator+':MEAS_LVDT_GD', self.start_time, self.end_time)
-
-        self.ref_col_df = pd.DataFrame({
-                        'time': col[reference_collimator+':MEAS_LVDT_GD'][0],
-                        'gap': col[reference_collimator+':MEAS_LVDT_GD'][1]
-                    })
-
-        self.ref_col_df['time'] = self.ref_col_df['time'].astype(int)
-        self.reference_collimator = reference_collimator+':MEAS_LVDT_GD'
-        
     def load_blm(self):
-
+        """
+        Load the BLM data associated with the reference collimator.
+        """
         # Split the string by '.' and ':'
         split_string = self.reference_collimator.replace(':', '.').split('.')
         
         # Try with 'E10'
         try:
             blm_string = 'BLMTI.0'+re.search(r'([0-9]+[RL][0-9]+)', split_string[1]).group()+'.'+split_string[2]+'E10_'+self.reference_collimator.split(':')[0]+':LOSS_RS09'
-
             blm = self.ldb.get(blm_string, self.start_time, self.end_time)
-            data = {'time': blm[blm_string][0],
-                    'loss': blm[blm_string][1] }
-            
+            df = pd.DataFrame({'time': blm[blm_string][0],
+                            'loss': blm[blm_string][1]})
         # If not check 'I10'
         except:
             blm_string = 'BLMTI.0'+re.search(r'([0-9]+[RL][0-9]+)', split_string[1]).group()+ '.'+split_string[2]+'I10_'+self.reference_collimator.split(':')[0]+':LOSS_RS09'
 
             blm = self.ldb.get(blm_string, self.start_time, self.end_time)
-            data = {'time': blm[blm_string][0],
-                    'loss': blm[blm_string][1]}
+            df = pd.DataFrame({'time': blm[blm_string][0],
+                            'loss': blm[blm_string][1]})
 
-        # Create a df and change time to integer
-        df = pd.DataFrame(data)
         df['time'] = df['time'].astype(int)
 
         # Make attributes
         self.reference_collimator_blm = blm_string
         self.ref_col_blm_df = df
         
-    def load_optics_and_rescale(self):
-    
-        # Reset indices
-        self.ref_col_df.reset_index(drop=True, inplace=True)
-        # Find collimator gaps corresponding to blm peaks
-        gaps = self.ref_col_df.iloc[self.peaks.peaks.values].gap
-        # Read the file
-        df = tfs.read(self.tfs_path)
-        # Find beta and gamma
-        if self.plane == 'horizontal': column = 'BETX'
-        if self.plane == 'vertical': column = 'BETY'   
-        beta = df[df.NAME == self.reference_collimator.split(':')[0]][column].values[0]
-        gamma = tfs.reader.read_headers(self.tfs_path)['GAMMA']
-        
-        # Sigma corresponding to the reference collimator
-        self.sigma = np.sqrt(beta * self.emittance / gamma)
-        # Rescale the gaps
-        self.gaps = gaps*1e-3/self.sigma
-        
     def find_peaks(self):
-        
+        """
+        Identify peaks in the BLM data corresponding to collimator movements.
+        """
         # TODO: improve
-        df = pd.concat([self.ref_col_blm_df, self.ref_col_df.drop(self.ref_col_df.columns[0], axis=1)], axis=1)
+        combined_data = pd.concat([self.ref_col_blm_df, self.ref_col_df.drop(self.ref_col_df.columns[0], axis=1)], axis=1)
         # Normalize the 'loss' column
-        df['loss'] = df['loss'] / df['loss'].max()
+        combined_data['loss'] /= combined_data['loss'].max()
         
         # Calculate the difference in 'gap'
-        gap_diff = df['gap'].diff().abs()  # Get the absolute difference
+        gap_diff = combined_data['gap'].diff().abs()  # Get the absolute difference
 
         # Create a mask for where the difference is greater than 0.1
         split_mask = gap_diff > self.gap_step
-
         dfs = []
 
         # Track start index for each split segment
@@ -195,14 +207,14 @@ class Collimators():
         for i in range(len(split_mask)):
             if split_mask[i]:
                 # If there's a split point, slice the DataFrame
-                segment = df.iloc[start_index:i]
+                segment = combined_data.iloc[start_index:i]
                 if segment.shape[0] > 5:  # Ensure segment has more than 5 rows
                     dfs.append(segment)
                     segment_start_indices.append(start_index)  # Record the start index of the segment
                 start_index = i  # Update the start index for the next segment
 
         # Append the last segment after the loop
-        dfs.append(df.iloc[start_index:])
+        dfs.append(combined_data.iloc[start_index:])
         segment_start_indices.append(start_index)
 
         # List to store peak indices relative to df1
@@ -246,13 +258,38 @@ class Collimators():
 
         peak_indices = [i for i in peak_indices if i != 0 and i != self.ref_col_df.shape[0]]
 
-        corresponding_times = df['time'].iloc[peak_indices].values
+        corresponding_times = combined_data['time'].iloc[peak_indices].values
 
         self.peaks = pd.DataFrame({'time': corresponding_times,
                                    'peaks': peak_indices})
 
-    def change_reference_collimator(self, reference_collimator):
+    def load_optics_and_rescale(self):
+        """
+        Load optics data and rescale collimator gaps to beam sigma.
+        """
+        # Reset indices
+        self.ref_col_df.reset_index(drop=True, inplace=True)
+        # Find collimator gaps corresponding to blm peaks
+        gaps = self.ref_col_df.iloc[self.peaks.peaks.values].gap
         
+        # Load optics data
+        optics_data = tfs.read(self.tfs_path)
+        if self.plane == 'horizontal': column = 'BETX'
+        elif self.plane == 'vertical': column = 'BETY'   
+        beta = optics_data.loc[optics_data.NAME == self.reference_collimator.split(':')[0], column].values[0]
+        gamma = tfs.reader.read_headers(self.tfs_path)['GAMMA']
+        
+        # Calculate sigma and rescale gaps
+        self.sigma = np.sqrt(beta * self.emittance / gamma)
+        self.gaps = gaps * 1e-3 / self.sigma
+
+    def change_reference_collimator(self, reference_collimator):
+        """
+        Change the reference collimator and reload associated data.
+
+        Parameteres:
+        - reference collimator: 
+        """
         self.load_data_given_ref_col(reference_collimator)
         self.load_blm()
         self.load_optics_and_rescale()

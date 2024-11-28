@@ -4,6 +4,10 @@ import pandas as pd
 
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+from ipywidgets import widgets, Tab, VBox, HBox, Button, Layout, FloatText, DatePicker, Text, Dropdown, Label, GridBox
+from IPython.display import display, Latex
+from ipyfilechooser import FileChooser
+from datetime import datetime, date
 
 from global_package.collimators import Collimators
 from global_package.bunches import Bunches
@@ -11,7 +15,7 @@ from global_package.blms import BLMs
 
 class Tool():
     
-    def __init__(self, spark):
+    def __init__(self, spark, initial_path='/eos/project-c/collimation-team/machine_configurations/'):
         """
         Initialize the Tool class with a Spark session.
         
@@ -19,6 +23,9 @@ class Tool():
         - spark: Spark session to be used for data loading and processing.
         """
         self.spark = spark
+        self.initial_path = initial_path
+
+        self.create_widgets()
 
     def select_time_and_beam(self, start_time, end_time, beam):
         """
@@ -61,12 +68,13 @@ class Tool():
             yaml_path=yaml_path
         )
 
-    def load_blms(self, option=3, threshold=0.8, bottleneck=None):
+    def load_blms(self, option=2, filter_out_collimators=True, threshold=0.8, bottleneck=None):
         """
         Load Beam Loss Monitors (BLMs) data.
 
         Parameters:
         - option: Option identifier for finding the bottleneck, to remove that (default: 3).
+        - filter_out_collimators: Whether to exclude collimator losses in bottleneck selection (default: True).
         - threshold: Threshold value to identify noise (default: 0.8).
         - bottleneck: String for the bottleneck (default: None).
         """
@@ -76,6 +84,7 @@ class Tool():
             beam=self.beam,
             spark=self.spark,
             option=option,
+            filter_out_collimators=filter_out_collimators,
             peaks=self.collimators.peaks,  # Pass peaks identified by collimators
             threshold=threshold,
             bottleneck=bottleneck
@@ -221,7 +230,8 @@ class Tool():
 
         # Update layout with a tertiary y-axis
         fig.update_layout(
-            title='Gap, Loss, and Bunch Intensity Over Time',
+            width=1000,
+            height=600
             xaxis=dict(title='Time'),
             yaxis=dict(title='Gap'),  # Primary y-axis
             yaxis2=dict(title='Loss', overlaying='y', side='right', tickfont=dict(size=10)),  # Secondary y-axis
@@ -291,8 +301,187 @@ class Tool():
 
         # Update layout
         fig.update_layout(
-            width=800,
+            width=600,
             height=600
         )
 
         return fig
+
+    def create_widgets(self):
+
+        self.beam_dropdown = Dropdown(
+            options=['B1H', 'B2H', 'B1V', 'B2V'],
+            description='Beam:'
+        )
+
+        self.start_date_picker = DatePicker(
+            description='Start date:',
+            value=date.today(),
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px')
+        )
+
+        self.start_time_input = Text(
+            description='Start time (HH:MM:SS):',
+            value=datetime.now().strftime('%H:%M:%S'),
+            placeholder='10:53:15',
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px')
+        )
+
+        self.end_date_picker = DatePicker(
+            description='End date:',
+            value=date.today(),
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px')
+        )
+
+        self.end_time_input = Text(
+            description='End time (HH:MM:SS):',
+            value=datetime.now().strftime('%H:%M:%S'),
+            placeholder='10:53:15',
+            style={'description_width': 'initial'},
+            layout=Layout(width='300px')
+        )
+
+        self.reference_collimator_input = Text(
+            value='',
+            description='Reference collimator:',
+            style={'description_width': 'initial'},
+            layout=Layout(width='400px')
+        )
+
+        self.bottleneck_input = Text(
+            value='',
+            description='Bottleneck:',
+            style={'description_width': 'initial'},
+            layout=Layout(width='400px')
+        )
+
+        self.reference_collimator_label = Label(
+            value='',
+            description='Reference collimator:',
+            style={'description_width': 'initial'},
+            layout=Layout(width='400px')
+        )
+
+        self.bottleneck_label = Label(
+            value='',
+            description='Bottleneck:',
+            style={'description_width': 'initial'},
+            layout=Layout(width='400px')
+        )
+
+        self.tfs_file_chooser = FileChooser(self.initial_path)
+
+        self.analyse_button = Button(
+            description="Analyse", 
+            icon="star",
+            style=widgets.ButtonStyle(button_color='pink')
+        )
+        self.analyse_button.on_click(self.on_analyse_button_clicked)
+
+        # Arrange widgets in HBoxes with custom styles
+        self.row1 = HBox(
+            [self.start_date_picker, self.start_time_input, self.end_date_picker, self.end_time_input],
+            layout=Layout(
+                justify_content="space-around",
+                align_items="center",
+                gap="20px",
+                border="2px solid lightgray",
+                padding="10px",
+                width="100%"
+            )
+        )
+
+        self.row2 = HBox(
+            [self.beam_dropdown, self.tfs_file_chooser, self.analyse_button],
+            layout=Layout(
+                justify_content="space-around",
+                align_items="center",
+                gap="20px",
+                border="2px solid lightgray",
+                padding="10px",
+                width="100%"
+            )
+        )
+
+        self.row3 = HBox(
+            [self.reference_collimator_input, self.bottleneck_input, self.reference_collimator_label, self.bottleneck_label],
+            layout=Layout(
+                justify_content="space-around",
+                align_items="center",
+                gap="20px",
+                border="2px solid lightgray",
+                padding="10px",
+                width="100%"
+            )
+        )
+
+        # Figure container
+        self.row4 = HBox(
+            [],
+            layout=Layout(
+                justify_content="space-around",
+                align_items="center",
+                gap="20px",
+                border="2px solid lightgray",
+                padding="10px",
+                width="100%"
+            )
+        )
+
+        # Arrange HBoxes in a VBox with custom styles
+        self.layout_box = VBox(
+            [self.row1, self.row2, self.row3, self.row4],
+            layout=Layout(
+                align_items="center",
+                gap="15px",
+                border="2px lightgray",
+                padding="10px",
+                width="90%"
+            )
+        )
+
+    def convert_to_datetime(self, date_picker, time_input):
+
+        # Extract the selected date and time
+        selected_date = date_picker.value  # Date from the DatePicker widget
+        selected_time = time_input.value  # Time from the Text widget
+
+        # Combine the date and time into a single string
+        combined_datetime_str = f"{selected_date} {selected_time}"
+
+        # Convert the combined string to a pandas datetime object
+        time = pd.to_datetime(combined_datetime_str)
+
+        return time
+
+    def on_analyse_button_clicked(self, b):
+
+        start_time = self.convert_to_datetime(self.start_date_picker, self.start_time_input)
+        end_time = self.convert_to_datetime(self.end_date_picker, self.end_time_input)
+        beam = self.beam_dropdown.value
+        print('Setting time...')
+        self.select_time_and_beam(start_time, end_time, beam)
+
+        print('Loading collimators...')
+        tfs_path = self.tfs_file_chooser.selected
+        self.load_collimators(tfs_path)
+        self.reference_collimator_label.value = f'Reference collimator: {self.collimators.reference_collimator}'
+
+        print('Loading blms...')
+        self.load_blms()
+        self.bottleneck_label.value = f'Bottleneck: {self.blms.bottleneck}'
+        print('Loading bunch intensities...')
+        self.load_bunches()
+
+        print('Creating figures...')
+        fig1 = self.everything_figure()
+        fig2 = self.normalised_losses_figure()
+        self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
+
+    def show(self):
+
+        display(self.layout_box)
+        
