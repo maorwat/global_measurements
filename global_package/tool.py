@@ -70,7 +70,7 @@ class Tool():
             yaml_path=yaml_path
         )
 
-    def load_blms(self, option=2, filter_out_collimators=True, threshold=0.8, bottleneck=None):
+    def load_blms(self, option=2, filter_out_collimators=False, threshold=0.8, bottleneck=None):
         """
         Load Beam Loss Monitors (BLMs) data.
 
@@ -223,7 +223,7 @@ class Tool():
                 y=normalized_loss.iloc[selected_peaks],
                 mode='markers',
                 name='Peaks',
-                marker=dict(symbol='star-open-dot', size=20, color='#2E8B57')
+                marker=dict(symbol='star', size=15, color='#2E8B57')
             ),
             secondary_y=True
         )
@@ -327,7 +327,7 @@ class Tool():
             xaxis=dict(title=f'Collimator setting [\u03C3]'),
             yaxis=dict(title='Normalised BLM signal'),
         )
-        
+        # Find the intersection between the two lines
         intersection = self.find_trace_intersections(
             np.array(selected_gaps), 
             self._normalise_again(normalised_col_blm),
@@ -368,6 +368,9 @@ class Tool():
         return x_int
 
     def create_widgets(self):
+        """
+        Creates all the widgets
+        """
 
         self.beam_dropdown = Dropdown(
             options=['B1H', 'B2H', 'B1V', 'B2V'],
@@ -566,69 +569,115 @@ class Tool():
         )
 
     def convert_to_datetime(self, date_picker, time_input):
+        """
+        Converts selected date and time inputs into a single pandas datetime object.
 
-        # Extract the selected date and time
-        selected_date = date_picker.value  # Date from the DatePicker widget
-        selected_time = time_input.value  # Time from the Text widget
+        Parameters:
+        - date_picker: Widget providing the selected date.
+        - time_input: Widget providing the selected time.
 
-        # Combine the date and time into a single string
-        combined_datetime_str = f"{selected_date} {selected_time}"
+        Returns:
+        - A pandas datetime object representing the combined date and time.
+        """
+        try:
+            # Extract the selected date and time
+            selected_date = date_picker.value  # Date from the DatePicker widget
+            selected_time = time_input.value  # Time from the Text widget
 
-        # Convert the combined string to a pandas datetime object
-        time = pd.to_datetime(combined_datetime_str)
+            # Combine the date and time into a single string
+            combined_datetime_str = f"{selected_date} {selected_time}"
 
-        return time
+            # Convert the combined string to a pandas datetime object
+            combined_datetime = pd.to_datetime(combined_datetime_str)
+
+            return combined_datetime
+        except Exception as e:
+            self.progress_label.value = f"Error parsing date and time: {e}"
     
     def find_enough_protons_peaks(self):
-        
+        """
+        Identifies peaks in proton losses that exceed the threshold set by the user.
+        """
         all_values = self.bunches.protons_lost.protons_lost.values
-        self.valid_peaks = np.where(all_values > self.min_protons_lost_input.value)[0]
+        threshold = self.min_protons_lost_input.value
+        self.valid_peaks = np.where(all_values > threshold)[0]
+
+        if len(self.valid_peaks) == 0:
+            self.progress_label.value = f"No losses above the threshold found, setting back to 1e6"
+            self.min_protons_lost_input.value = 1e6
+            self.valid_peaks = np.where(all_values > 1e6)[0]
 
     def on_analyse_button_clicked(self, b):
+        """
+        Handles the analysis button click event.
+        This function performs the entire analysis pipeline from setting the time range to plotting figures.
+        """
+        try:
+            # Parse start and end times
+            self.progress_label.value = 'Setting time...'
+            start_time = self.convert_to_datetime(self.start_date_picker, self.start_time_input)
+            end_time = self.convert_to_datetime(self.end_date_picker, self.end_time_input)
+            beam = self.beam_dropdown.value
 
-        start_time = self.convert_to_datetime(self.start_date_picker, self.start_time_input)
-        end_time = self.convert_to_datetime(self.end_date_picker, self.end_time_input)
-        beam = self.beam_dropdown.value
-        self.progress_label.value = 'Setting time...'
-        self.select_time_and_beam(start_time, end_time, beam)
+            # Perform initial setup
+            self.select_time_and_beam(start_time, end_time, beam)
 
-        self.progress_label.value = 'Loading collimators...'
-        tfs_path = self.tfs_file_chooser.selected
-        reference_collimator = self.reference_collimator_input.value.upper()
-        self.load_collimators(tfs_path=tfs_path, reference_collimator=reference_collimator)
-        reference_collimator = self.collimators.reference_collimator.split(':')[0]
-        self.reference_collimator_label.value = f'Reference collimator: {reference_collimator}'
-        self.multi_select.options = np.round(self.collimators.gaps, 2)
+            # Load collimator settings
+            self.progress_label.value = 'Loading collimators...'
+            tfs_path = self.tfs_file_chooser.selected
+            reference_collimator = self.reference_collimator_input.value.upper()
+            self.load_collimators(tfs_path=tfs_path, reference_collimator=reference_collimator)
+            ref_coll = self.collimators.reference_collimator.split(':')[0]
+            self.reference_collimator_label.value = f'Reference collimator: {ref_coll}'
+            self.multi_select.options = np.round(self.collimators.gaps, 2)
 
-        self.progress_label.value = 'Loading blms...'
-        bottleneck = self.bottleneck_input.value.upper()
-        self.load_blms(bottleneck=bottleneck)
-        self.bottleneck_label.value = f'Bottleneck BLM: {self.blms.bottleneck}'
-        self.progress_label.value = 'Loading bunch intensities...'
-        self.load_bunches()
+            # Load BLM settings
+            self.progress_label.value = 'Loading BLMs...'
+            bottleneck = self.bottleneck_input.value.upper()
+            self.load_blms(bottleneck=bottleneck)
+            self.bottleneck_label.value = f'Bottleneck BLM: {self.blms.bottleneck}'
 
-        self.find_enough_protons_peaks()
-        #self.multi_select.options = np.round(self.collimators.gaps.values, 2)[self.valid_peaks]
-        self.multi_select.value = tuple(np.round(self.collimators.gaps.values, 2)[self.valid_peaks])
-        self.progress_label.value = 'Creating figures...'
-        fig1 = self.everything_figure(self.valid_peaks)
-        fig2, intersection = self.normalised_losses_figure(self.valid_peaks)
-        self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
-        self.intersection_label.value = f'Intersection: {intersection:.2f} [\u03C3]'
+            # Load bunch intensities and find peaks
+            self.progress_label.value = 'Loading bunch intensities...'
+            self.load_bunches()
+            self.find_enough_protons_peaks()
+
+            # Filter and update multi-select options
+            valid_gaps = np.round(self.collimators.gaps.values, 2)[self.valid_peaks]
+            self.multi_select.value = tuple(valid_gaps)
+
+            # Generate and display figures
+            self.progress_label.value = 'Creating figures...'
+            fig1 = self.everything_figure(self.valid_peaks)
+            fig2, intersection = self.normalised_losses_figure(self.valid_peaks)
+            self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
+            self.intersection_label.value = f'Intersection: {intersection:.2f} [\u03C3]'
+        except Exception as e:
+            self.progress_label.value = f"Error during analysis: {e}"
 
     def on_rescale_button_clicked(self, b):
+        """
+        Handles the rescale button click event.
+        Rescales the plots based on the user's selected gaps.
+        """
+        try:
+            # Identify selected gaps and their corresponding peaks
+            all_gaps = np.round(self.collimators.gaps.values, 2)
+            selected_gaps = self.multi_select.value
+            selected_peaks = [np.where(all_gaps == value)[0][0] for value in np.array(selected_gaps)]
 
-        all_values = np.round(self.collimators.gaps.values, 2)
-        selected_values = self.multi_select.value
-        selected_peaks = [np.where(all_values == value)[0][0] for value in np.array(selected_values)]
-
-        self.progress_label.value = 'Creating figures...'
-        fig1 = self.everything_figure(selected_peaks)
-        fig2, intersection = self.normalised_losses_figure(selected_peaks)
-        self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
-        self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+            # Generate and display figures
+            self.progress_label.value = 'Creating figures...'
+            fig1 = self.everything_figure(selected_peaks)
+            fig2, intersection = self.normalised_losses_figure(selected_peaks)
+            self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
+            self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+        except Exception as e:
+            self.progress_label.value = f"Error during rescaling: {e}"
 
     def show(self):
-
+        """
+        Displays the layout for the interactive widgets and controls.
+        """
         display(self.layout_box)
         

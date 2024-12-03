@@ -75,6 +75,7 @@ class BLMs:
         if self.option == 1:
             self.bottleneck = normalized_df[filtered_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
         elif self.option == 2:
+            df_cleaned[filtered_df.columns] = df_cleaned[filtered_df.columns].apply(lambda col: col - col.min())
             self.bottleneck = df_cleaned[filtered_df.columns].iloc[self.peaks.iloc[-1]].idxmax()
         elif self.option == 3:
             self.bottleneck = normalized_df[filtered_df.columns].apply(lambda col: col.max() - col.min()).idxmax()

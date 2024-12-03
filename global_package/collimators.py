@@ -232,14 +232,14 @@ class Collimators():
 
         # Skip empty segments at the start
         for i, segment in enumerate(dfs):
-            peaks, _ = find_peaks(segment.loss, prominence=0.01)
+            peaks, _ = find_peaks(segment.loss, prominence=0.05)
             if peaks.size > 0:
                 valid_start = i
                 break
 
         # Skip empty segments at the end
         for i, segment in enumerate(reversed(dfs)):
-            peaks, _ = find_peaks(segment.loss, prominence=0.01)
+            peaks, _ = find_peaks(segment.loss, prominence=0.05)
             if peaks.size > 0:
                 valid_end = len(dfs) - i
                 break
