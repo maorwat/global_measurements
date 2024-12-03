@@ -39,8 +39,8 @@ class BLMs:
         # Load BLM data
         self.get_blm_df()
 
-        # Automatically find bottleneck if not provided
-        if self.bottleneck is None:
+        # Automatically find bottleneck if not provided or incorrect
+        if self.bottleneck not in self.blm_mqx_df.columns or self.bottleneck == '':
             self.find_highest_losses()
 
     def get_blm_df(self):

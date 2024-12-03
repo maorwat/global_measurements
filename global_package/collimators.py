@@ -16,7 +16,7 @@ class Collimators():
                 beam,
                 tfs_path,
                 spark,
-                gap_step=0.15,
+                gap_step=0.1,
                 reference_collimator=None,
                 emittance=3.5e-6,
                 yaml_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
@@ -62,33 +62,39 @@ class Collimators():
         - reference_collimator: 
         """
         # If reference collimator not given, find
-        if reference_collimator is not None:
-            self.load_data_given_ref_col(reference_collimator)
+        if reference_collimator is None or reference_collimator == '':
+            self.find_ref_collimator_and_load_data()
         else:
-            # Load the file  
-            with open(self.yaml_path, 'r') as file:
-                f = yaml.safe_load(file)
+            try: self.load_data_given_ref_col(reference_collimator)
+            # If given reference collimator is incorrect, find
+            except: self.find_ref_collimator_and_load_data()
 
-            # Create a data frame
-            cols = pd.DataFrame(f['collimators'][self.beam]).loc[['angle']].T
-            cols = cols.reset_index().rename(columns={'index': 'name'})
+    def find_ref_collimator_and_load_data(self):
 
-            if self.plane == 'horizontal': angle = 0
-            elif self.plane == 'vertical': angle = 90
-            cols = cols[cols['angle'] == angle].dropna()
+        # Load the file  
+        with open(self.yaml_path, 'r') as file:
+            f = yaml.safe_load(file)
 
-            # Get a list of collimator names to load from timber
-            names = cols['name'].str.upper().to_list()
-            for i, name in enumerate(names): names[i]=name+':MEAS_LVDT_GD'
-                
-            # Load from timber
-            cols = self.ldb.get(names, self.start_time, self.end_time)
+        # Create a data frame
+        cols = pd.DataFrame(f['collimators'][self.beam]).loc[['angle']].T
+        cols = cols.reset_index().rename(columns={'index': 'name'})
+
+        if self.plane == 'horizontal': angle = 0
+        elif self.plane == 'vertical': angle = 90
+        cols = cols[cols['angle'] == angle].dropna()
+
+        # Get a list of collimator names to load from timber
+        names = cols['name'].str.upper().to_list()
+        for i, name in enumerate(names): names[i]=name+':MEAS_LVDT_GD'
             
-            # Find collimators that moved
-            moved_collimators = self.find_moved_collimators(cols)
-            
-            # Find the reference collimator
-            self.process_dataframe(moved_collimators)
+        # Load from timber
+        cols = self.ldb.get(names, self.start_time, self.end_time)
+        
+        # Find collimators that moved
+        moved_collimators = self.find_moved_collimators(cols)
+        
+        # Find the reference collimator
+        self.process_dataframe(moved_collimators)
 
     def load_data_given_ref_col(self, reference_collimator):
         """
@@ -281,7 +287,7 @@ class Collimators():
         
         # Calculate sigma and rescale gaps
         self.sigma = np.sqrt(beta * self.emittance / gamma)
-        self.gaps = gaps * 1e-3 / self.sigma
+        self.gaps = (gaps / 2) * 1e-3 / self.sigma
 
     def change_reference_collimator(self, reference_collimator):
         """
