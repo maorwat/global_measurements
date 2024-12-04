@@ -162,7 +162,7 @@ class Tool():
         fig.add_trace(
             go.Scatter(
                 x=self.collimators.ref_col_df.time,
-                y=self.collimators.ref_col_df.gap,
+                y=(self.collimators.ref_col_df.gap / 2) * 1e-3 / self.collimators.sigma,
                 mode='lines',
                 name=f'{reference_collimator} gap',
                 line=dict(color='gray')
@@ -322,7 +322,7 @@ class Tool():
 
         # Update layout
         fig.update_layout(
-            width=600,
+            width=800,
             height=600,
             xaxis=dict(title=f'Collimator setting [\u03C3]'),
             yaxis=dict(title='Normalised BLM signal'),
@@ -410,21 +410,28 @@ class Tool():
         self.progress_label = Label(
             value='',
             style={'description_width': 'initial'},
-            layout=Layout(width='200px')
+            layout=Layout(width='400px')
         )
 
         self.min_protons_lost_input = FloatText(
-            value=1e6,
+            value=1e7,
             description='Min number of protons lost:',
             style={'description_width': 'initial'},
             layout=Layout(width='300px')
         )
 
+        self.min_protons_lost_button = Button(
+            description="Find peaks", 
+            icon="bolt",
+            style=widgets.ButtonStyle(button_color='pink')
+        )
+        self.min_protons_lost_button.on_click(self.on_min_protons_lost_button_clicked)
+
         self.reference_collimator_input = Text(
             value='',
             description='Reference collimator:',
             style={'description_width': 'initial'},
-            layout=Layout(width='400px')
+            layout=Layout(width='350px')
         )
 
         self.bottleneck_input = Text(
@@ -438,14 +445,14 @@ class Tool():
             value='',
             description='Reference collimator:',
             style={'description_width': 'initial'},
-            layout=Layout(width='300px')
+            layout=Layout(width='250px')
         )
 
         self.bottleneck_label = Label(
             value='',
             description='Bottleneck BLM:',
             style={'description_width': 'initial'},
-            layout=Layout(width='400px')
+            layout=Layout(width='300px')
         )
 
         self.intersection_label = Label(
@@ -477,7 +484,7 @@ class Tool():
         )
 
         self.row2 = HBox(
-            [self.beam_dropdown, self.tfs_file_chooser, self.min_protons_lost_input, self.analyse_button],
+            [self.beam_dropdown, self.tfs_file_chooser, self.analyse_button, self.min_protons_lost_input, self.min_protons_lost_button],
             layout=Layout(
                 justify_content="space-around",
                 align_items="center",
@@ -603,7 +610,7 @@ class Tool():
         self.valid_peaks = np.where(all_values > threshold)[0]
 
         if len(self.valid_peaks) == 0:
-            self.progress_label.value = f"No losses above the threshold found, setting back to 1e6"
+            self.progress_label.value = f"No losses above the threshold found, setting to 1e6"
             self.min_protons_lost_input.value = 1e6
             self.valid_peaks = np.where(all_values > 1e6)[0]
 
@@ -651,9 +658,27 @@ class Tool():
             fig1 = self.everything_figure(self.valid_peaks)
             fig2, intersection = self.normalised_losses_figure(self.valid_peaks)
             self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
-            self.intersection_label.value = f'Intersection: {intersection:.2f} [\u03C3]'
+            self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
         except Exception as e:
             self.progress_label.value = f"Error during analysis: {e}"
+
+    def on_min_protons_lost_button_clicked(self, b):
+
+        try:
+            self.find_enough_protons_peaks()
+            # Filter and update multi-select options
+            valid_gaps = np.round(self.collimators.gaps.values, 2)[self.valid_peaks]
+            self.multi_select.value = tuple(valid_gaps)
+
+            # Generate and display figures
+            self.progress_label.value = 'Creating figures...'
+            fig1 = self.everything_figure(self.valid_peaks)
+            fig2, intersection = self.normalised_losses_figure(self.valid_peaks)
+            self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
+            self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+        except Exception as e:
+            self.progress_label.value = f"Error: {e}"
+
 
     def on_rescale_button_clicked(self, b):
         """
