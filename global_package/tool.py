@@ -76,10 +76,12 @@ class Tool():
 
         Parameters:
         - option: Option identifier for finding the bottleneck, to remove that (default: 3).
-        - filter_out_collimators: Whether to exclude collimator losses in bottleneck selection (default: True).
+        - filter_out_collimators: Whether to exclude collimator losses 
+            in bottleneck selection (default: True).
         - threshold: Threshold value to identify noise (default: 0.8).
         - bottleneck: String for the bottleneck (default: None).
         """
+        reference_collimator_blm = self.collimators.reference_collimator_blm.split(':')[0]
         self.blms = BLMs(
             start_time=self.start_time,
             end_time=self.end_time,
@@ -89,7 +91,8 @@ class Tool():
             filter_out_collimators=filter_out_collimators,
             peaks=self.collimators.peaks,  # Pass peaks identified by collimators
             threshold=threshold,
-            bottleneck=bottleneck
+            bottleneck=bottleneck,
+            reference_collimator_blm=reference_collimator_blm
         )
 
     def load_bunches(self, prominence=0.05, min_separation=5):
@@ -114,19 +117,24 @@ class Tool():
 
     def find_all_peaks(self, prominence, min_separation):
         """
-        Identify peaks in the normalized data and combine peaks from two sources while ensuring minimum separation.
+        Identify peaks in the normalized data and combine peaks 
+        from two sources while ensuring minimum separation.
 
         Parameters:
         - prominence: The prominence of the peaks to find.
         - min_separation: Minimum distance between peaks.
         """
         # Find peaks in the normalized reference collimator data
-        normalized_ref_loss = self._normalise_again(self.collimators.ref_col_blm_df.loss)
-        all_peaks1, _ = find_peaks(normalized_ref_loss, prominence=prominence, distance=min_separation)
+        normalized_ref_loss = self._normalise_again(
+            self.collimators.ref_col_blm_df.loss)
+        all_peaks1, _ = find_peaks(
+            normalized_ref_loss, prominence=prominence, distance=min_separation)
 
         # Find peaks in the normalized bottleneck data
-        normalized_bottleneck_loss = self._normalise_again(self.blms.blm_mqx_df[self.blms.bottleneck])
-        all_peaks2, _ = find_peaks(normalized_bottleneck_loss, prominence=prominence, distance=min_separation)
+        normalized_bottleneck_loss = self._normalise_again(
+            self.blms.blm_mqx_df[self.blms.bottleneck])
+        all_peaks2, _ = find_peaks(
+            normalized_bottleneck_loss, prominence=prominence, distance=min_separation)
 
         # Combine the peaks from both sources
         candidate_peaks = np.concatenate([all_peaks1, all_peaks2])
@@ -215,8 +223,11 @@ class Tool():
             ),
             secondary_y=True
         )
-        if selected_peaks is None: selected_peaks = self.collimators.peaks.peaks.values
-        else: selected_peaks = self.collimators.peaks.peaks.values[selected_peaks]
+        if selected_peaks is None: 
+            selected_peaks = self.collimators.peaks.peaks.values
+        else: 
+            selected_peaks = self.collimators.peaks.peaks.values[selected_peaks]
+
         fig.add_trace(
             go.Scatter(
                 x=self.collimators.ref_col_blm_df.time.iloc[selected_peaks],
@@ -290,10 +301,15 @@ class Tool():
         Create a figure for normalized losses at the collimator and bottleneck.
         """
         # Normalize losses
-        normalised_col_blm = self._normalise_blm_data(self.collimators.ref_col_blm_df, 'loss', selected_peaks)
-        normalised_bottleneck_blm = self._normalise_blm_data(self.blms.blm_mqx_df, self.blms.bottleneck, selected_peaks)
-        if selected_peaks is None: selected_gaps = self.collimators.gaps
-        else: selected_gaps = self.collimators.gaps.values[selected_peaks]
+        normalised_col_blm = self._normalise_blm_data(
+            self.collimators.ref_col_blm_df, 'loss', selected_peaks)
+        normalised_bottleneck_blm = self._normalise_blm_data(
+            self.blms.blm_mqx_df, self.blms.bottleneck, selected_peaks)
+
+        if selected_peaks is None: 
+            selected_gaps = self.collimators.gaps
+        else: 
+            selected_gaps = self.collimators.gaps.values[selected_peaks]
 
         # Create figure
         fig = go.Figure()
@@ -337,7 +353,7 @@ class Tool():
     
     def find_trace_intersections(self, x, y1, y2, method='linear'):
         """
-        Finds the intersection points of two traces.
+        Find the intersection points of two traces.
 
         Parameters:
         - x: Array-like, the x-values common to both traces.
@@ -369,7 +385,7 @@ class Tool():
 
     def create_widgets(self):
         """
-        Creates all the widgets
+        Create all the widgets
         """
 
         self.beam_dropdown = Dropdown(
@@ -472,7 +488,12 @@ class Tool():
 
         # Arrange widgets in HBoxes with custom styles
         self.row1 = HBox(
-            [self.start_date_picker, self.start_time_input, self.end_date_picker, self.end_time_input],
+            [
+                self.start_date_picker, 
+                self.start_time_input, 
+                self.end_date_picker, 
+                self.end_time_input
+            ],
             layout=Layout(
                 justify_content="space-around",
                 align_items="center",
@@ -484,7 +505,13 @@ class Tool():
         )
 
         self.row2 = HBox(
-            [self.beam_dropdown, self.tfs_file_chooser, self.analyse_button, self.min_protons_lost_input, self.min_protons_lost_button],
+            [
+                self.beam_dropdown, 
+                self.tfs_file_chooser, 
+                self.analyse_button, 
+                self.min_protons_lost_input, 
+                self.min_protons_lost_button
+            ],
             layout=Layout(
                 justify_content="space-around",
                 align_items="center",
@@ -496,7 +523,14 @@ class Tool():
         )
 
         self.row3 = HBox(
-            [self.progress_label, self.reference_collimator_input, self.bottleneck_input, self.reference_collimator_label, self.bottleneck_label, self.intersection_label],
+            [
+                self.progress_label, 
+                self.reference_collimator_input, 
+                self.bottleneck_input, 
+                self.reference_collimator_label, 
+                self.bottleneck_label, 
+                self.intersection_label
+            ],
             layout=Layout(
                 justify_content="space-around",
                 align_items="center",
@@ -539,14 +573,17 @@ class Tool():
         )
 
         self.rescale_button = Button(
-            description="Rescale", 
-            icon="coffee",
+            description="Rescale",
             style=widgets.ButtonStyle(button_color='pink')
         )
         self.rescale_button.on_click(self.on_rescale_button_clicked)
 
         self.multi_select_box = VBox(
-            [widgets.HTML("<h4>Points to analyse</h4>"), self.multi_select, self.rescale_button],
+            [
+                widgets.HTML("<h4>Points to analyse</h4>"), 
+                self.multi_select, 
+                self.rescale_button
+            ],
             layout=Layout(
                 align_items="center",
                 width="10%"
@@ -577,7 +614,7 @@ class Tool():
 
     def convert_to_datetime(self, date_picker, time_input):
         """
-        Converts selected date and time inputs into a single pandas datetime object.
+        Convert selected date and time inputs into a single pandas datetime object.
 
         Parameters:
         - date_picker: Widget providing the selected date.
@@ -603,7 +640,7 @@ class Tool():
     
     def find_enough_protons_peaks(self):
         """
-        Identifies peaks in proton losses that exceed the threshold set by the user.
+        Identify peaks in proton losses that exceed the threshold set by the user.
         """
         all_values = self.bunches.protons_lost.protons_lost.values
         threshold = self.min_protons_lost_input.value
@@ -616,7 +653,7 @@ class Tool():
 
     def on_analyse_button_clicked(self, b):
         """
-        Handles the analysis button click event.
+        Handle the analysis button click event.
         This function performs the entire analysis pipeline from setting the time range to plotting figures.
         """
         try:
@@ -682,8 +719,8 @@ class Tool():
 
     def on_rescale_button_clicked(self, b):
         """
-        Handles the rescale button click event.
-        Rescales the plots based on the user's selected gaps.
+        Handle the rescale button click event.
+        Rescale the plots based on the user's selected gaps.
         """
         try:
             # Identify selected gaps and their corresponding peaks
@@ -702,7 +739,7 @@ class Tool():
 
     def show(self):
         """
-        Displays the layout for the interactive widgets and controls.
+        Display the layout for the interactive widgets and controls.
         """
         display(self.layout_box)
         

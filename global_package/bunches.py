@@ -44,8 +44,12 @@ class Bunches:
         time_array = bunches[name][0]
         bunch_intensity_array = np.stack(bunches[name][1], axis=1)
         df = pd.DataFrame({'time': time_array})
-        bunch_data_df = pd.DataFrame(bunch_intensity_array.T, columns=[f'Bunch {n}' for n in range(bunch_intensity_array.shape[0])])
-        df = pd.concat([df, bunch_data_df], axis=1).drop(columns=[col for col in df if (df[col] == 0).all()])
+
+        bunch_columns = [f'Bunch {n}' for n in range(bunch_intensity_array.shape[0])]
+        bunch_data_df = pd.DataFrame(bunch_intensity_array.T, columns=bunch_columns)
+
+        columns = [col for col in df if (df[col] == 0).all()]
+        df = pd.concat([df, bunch_data_df], axis=1).drop(columns=columns)
 
         # Identify the bunch with the maximum intensity drop
         drops = df.iloc[0] - df.iloc[-1]
@@ -74,16 +78,24 @@ class Bunches:
             if end > start:
                 smoothed_bunch_intensity[start:end] = np.mean(bunch_intensity[start:end])
 
-        self.smoothed_bunch_intensity = np.nan_to_num(smoothed_bunch_intensity, nan=np.nanmean(bunch_intensity))
+        self.smoothed_bunch_intensity = np.nan_to_num(
+            smoothed_bunch_intensity, nan=np.nanmean(bunch_intensity))
 
     def get_protons_lost(self):
         """
         Calculate the protons lost based on smoothed bunch intensity and peaks.
         """
-        unique_values = np.unique(self.smoothed_bunch_intensity)[::-1]  # Descending order
+        # Descending order
+        unique_values = np.unique(self.smoothed_bunch_intensity)[::-1] 
         corresponding_times = self.all_peaks.time.values
 
-        protons_lost = [unique_values[i] - unique_values[i + 1] for i in range(len(unique_values) - 1)]
+        protons_lost = [
+            unique_values[i] - unique_values[i + 1] 
+            for i in range(len(unique_values) - 1)
+            ]
 
-        df = pd.DataFrame({'protons_lost': protons_lost, 'time': corresponding_times})
+        df = pd.DataFrame(
+            {'protons_lost': protons_lost, 
+             'time': corresponding_times}
+             )
         self.protons_lost = pd.merge(self.peaks, df, on='time', how='left')

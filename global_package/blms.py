@@ -9,7 +9,8 @@ from global_package.utils import *
 
 class BLMs:
     def __init__(self, start_time, end_time, beam, spark, option=3, 
-                 filter_out_collimators=True, peaks=None, threshold=0.8, bottleneck=None):
+                 filter_out_collimators=False, peaks=None, threshold=0.8, 
+                 bottleneck=None, reference_collimator_blm=None):
         """
         Initialize the BLMs class for Beam Loss Monitor data processing.
 
@@ -19,7 +20,8 @@ class BLMs:
         - beam: Beam identifier 'B1H', 'B2H', 'B1V', or 'B2V'.
         - spark: Spark session for data processing.
         - option: Strategy for bottleneck selection (default: 3).
-        - filter_out_collimators: Whether to exclude collimator losses in bottleneck selection (default: True).
+        - filter_out_collimators: Whether to exclude collimator losses 
+        in bottleneck selection (default: True).
         - peaks: Identified peaks from collimators (default: None).
         - threshold: Noise threshold for filtering signals (default: 0.8).
         - bottleneck: Specific bottleneck to set (default: None).
@@ -35,6 +37,7 @@ class BLMs:
         self.peaks = peaks.peaks
         self.filter_out_collimators = filter_out_collimators
         self.bottleneck = bottleneck
+        self.reference_collimator_blm = reference_collimator_blm
 
         # Load BLM data
         self.get_blm_df()
@@ -63,6 +66,8 @@ class BLMs:
         """
         # Clean the data
         df_cleaned = self.blm_mqx_df.dropna(axis=1, how='all').drop('time', axis=1)
+        if self.reference_collimator_blm is not None:
+            df_cleaned = df_cleaned.drop(self.reference_collimator_blm, axis=1)
         if self.filter_out_collimators:
             df_cleaned = df_cleaned.loc[:, ~df_cleaned.columns.str.contains('TC|TDI')]
 
