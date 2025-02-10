@@ -18,7 +18,7 @@ from global_package.blms import BLMs
 
 class Tool():
     
-    def __init__(self, spark, initial_path='/eos/project-c/collimation-team/machine_configurations/'):
+    def __init__(self, spark, prominence=0.05, initial_path='/eos/project-c/collimation-team/machine_configurations/'):
         """
         Initialize the Tool class with a Spark session.
         
@@ -27,6 +27,7 @@ class Tool():
         """
         self.spark = spark
         self.initial_path = initial_path
+        self.prominence = prominence
 
         self.create_widgets()
 
@@ -140,7 +141,7 @@ class Tool():
         # Combine the peaks from both sources
         candidate_peaks = np.concatenate([all_peaks1, all_peaks2])
 
-        # Start with existing peaks to ensure inclusion
+        # Start with collimator blm peaks to ensure inclusion
         final_peaks = list(self.collimators.peaks.peaks.values)
 
         # Add candidate peaks if they meet the minimum separation criterion
@@ -161,12 +162,15 @@ class Tool():
         })
 
     def convert_time(self, time_in_df):
+
         zurich_tz = pytz.timezone("Europe/Zurich")
+
         time_converted = (
             pd.to_datetime(time_in_df.to_list(), unit="s")
             .tz_localize("UTC")
             .tz_convert(zurich_tz)
         )
+
         return time_converted
 
     def everything_figure(self, selected_peaks=None):
@@ -354,11 +358,13 @@ class Tool():
             xaxis=dict(title=f'Collimator setting [\u03C3]'),
             yaxis=dict(title='Normalised BLM signal'),
         )
-        # Find the intersection between the two lines
-        intersection = self.find_trace_intersections(
-            np.array(selected_gaps), 
-            self._normalise_again(normalised_col_blm),
-            self._normalise_again(normalised_bottleneck_blm))
+        try:
+            # Find the intersection between the two lines
+            intersection = self.find_trace_intersections(
+                np.array(selected_gaps), 
+                self._normalise_again(normalised_col_blm),
+                self._normalise_again(normalised_bottleneck_blm))
+        except: intersection = None
 
         return fig, intersection
     
@@ -384,13 +390,16 @@ class Tool():
             return f1(x_val) - f2(x_val)
         
         # Find roots (intersection points)
-        for i in range(len(x) - 1):
-            # Check if a sign change occurs in this interval
-            if (y1[i] - y2[i]) * (y1[i+1] - y2[i+1]) <= 0:  # Possible root in [x[i], x[i+1]]
-                root = root_scalar(diff_func, bracket=[x[i], x[i+1]], method='brentq')
-                if root.converged:
-                    # Calculate the corresponding y-value
-                    x_int = root.root
+        try:
+            for i in range(len(x) - 1):
+                # Check if a sign change occurs in this interval
+                if (y1[i] - y2[i]) * (y1[i+1] - y2[i+1]) <= 0:  # Possible root in [x[i], x[i+1]]
+                    root = root_scalar(diff_func, bracket=[x[i], x[i+1]], method='brentq')
+                    if root.converged:
+                        # Calculate the corresponding y-value
+                        x_int = root.root
+        except:
+            x_int = None
         
         return x_int
 
@@ -694,7 +703,7 @@ class Tool():
 
             # Load bunch intensities and find peaks
             self.progress_label.value = 'Loading bunch intensities...'
-            self.load_bunches()
+            self.load_bunches(prominence=self.prominence)
             self.find_enough_protons_peaks()
 
             # Filter and update multi-select options
@@ -706,7 +715,10 @@ class Tool():
             fig1 = self.everything_figure(self.valid_peaks)
             fig2, intersection = self.normalised_losses_figure(self.valid_peaks)
             self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
-            self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+            if intersection:
+                self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+            else:
+                self.intersection_label.value = f'Intersection not found :('
         except Exception as e:
             self.progress_label.value = f"Error during analysis: {e}"
 
@@ -723,7 +735,10 @@ class Tool():
             fig1 = self.everything_figure(self.valid_peaks)
             fig2, intersection = self.normalised_losses_figure(self.valid_peaks)
             self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
-            self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+            if intersection:
+                self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+            else:
+                self.intersection_label.value = f'Intersection not found :('
         except Exception as e:
             self.progress_label.value = f"Error: {e}"
 
@@ -744,7 +759,10 @@ class Tool():
             fig1 = self.everything_figure(selected_peaks)
             fig2, intersection = self.normalised_losses_figure(selected_peaks)
             self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
-            self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+            if intersection:
+                self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
+            else:
+                self.intersection_label.value = f'Intersection not found :('
         except Exception as e:
             self.progress_label.value = f"Error during rescaling: {e}"
 
