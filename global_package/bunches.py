@@ -74,24 +74,35 @@ class Bunches:
             segments.append((start_idx, len(bunch_intensity)))
 
         smoothed_bunch_intensity = np.copy(bunch_intensity)
+        steps = np.copy(bunch_intensity)
+        
+        time_to_average = 15
+
         for start, end in segments:
             if end > start:
-                smoothed_bunch_intensity[start:end] = np.mean(bunch_intensity[start:end])
+                steps[start:end] = np.mean(bunch_intensity[start:end])
+                if (end-start) > time_to_average:
+                    smoothed_bunch_intensity[start:start+time_to_average] = np.mean(bunch_intensity[start:start+time_to_average])
+                    smoothed_bunch_intensity[end-time_to_average:end] = np.mean(bunch_intensity[end-time_to_average:end])
+                else:
+                    smoothed_bunch_intensity[start:end] = np.mean(bunch_intensity[start:end])
 
         self.smoothed_bunch_intensity = np.nan_to_num(
             smoothed_bunch_intensity, nan=np.nanmean(bunch_intensity))
+        self.steps = np.nan_to_num(
+            steps, nan=np.nanmean(bunch_intensity))
 
     def get_protons_lost(self):
         """
         Calculate the protons lost based on smoothed bunch intensity and peaks.
         """
         # Descending order
-        unique_values = np.unique(self.smoothed_bunch_intensity)[::-1] 
+        drops = np.where(np.diff(self.steps) < 0)[0]
         corresponding_times = self.all_peaks.time.values
 
         protons_lost = [
-            unique_values[i] - unique_values[i + 1] 
-            for i in range(len(unique_values) - 1)
+            self.smoothed_bunch_intensity[drops[i]] - self.smoothed_bunch_intensity[drops[i]+1] 
+            for i in range(len(drops))
             ]
 
         df = pd.DataFrame(

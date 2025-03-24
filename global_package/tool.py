@@ -10,6 +10,7 @@ from ipywidgets import widgets, Tab, VBox, HBox, Button, Layout, FloatText, Date
 from IPython.display import display, Latex
 from ipyfilechooser import FileChooser
 from datetime import datetime, date
+import pytz
 
 from global_package.collimators import Collimators
 from global_package.bunches import Bunches
@@ -159,6 +160,15 @@ class Tool():
             'peaks': final_peaks
         })
 
+    def convert_time(self, time_in_df):
+        zurich_tz = pytz.timezone("Europe/Zurich")
+        time_converted = (
+            pd.to_datetime(time_in_df.to_list(), unit="s")
+            .tz_localize("UTC")
+            .tz_convert(zurich_tz)
+        )
+        return time_converted
+
     def everything_figure(self, selected_peaks=None):
         """
         Generate a comprehensive figure showing gap, loss, and bunch intensity over time.
@@ -166,10 +176,11 @@ class Tool():
         fig = make_subplots(specs=[[{"secondary_y": True}]])
 
         reference_collimator = self.collimators.reference_collimator.split(':')[0]
+    
         # Add Gap trace (primary y-axis)
         fig.add_trace(
             go.Scatter(
-                x=self.collimators.ref_col_df.time,
+                x=self.convert_time(self.collimators.ref_col_df.time),
                 y=(self.collimators.ref_col_df.gap / 2) * 1e-3 / self.collimators.sigma,
                 mode='lines',
                 name=f'{reference_collimator} gap',
@@ -190,7 +201,7 @@ class Tool():
         #)
         fig.add_trace(
             go.Scatter(
-                x=self.bunches.bunch_df.time,
+                x=self.convert_time(self.bunches.bunch_df.time),
                 y=self.bunches.bunch_df[self.bunches.bunch]/(10**8),
                 mode='lines',
                 name='Bunch Intensity',
@@ -203,7 +214,7 @@ class Tool():
         normalized_loss = self.collimators.ref_col_blm_df.loss / self.collimators.ref_col_blm_df.loss.max()
         fig.add_trace(
             go.Scatter(
-                x=self.collimators.ref_col_blm_df.time,
+                x=self.convert_time(self.collimators.ref_col_blm_df.time),
                 y=normalized_loss,
                 mode='lines',
                 name=reference_collimator_blm,
@@ -215,7 +226,7 @@ class Tool():
         normalized_bottleneck_loss = self.blms.blm_mqx_df[self.blms.bottleneck] / self.blms.blm_mqx_df[self.blms.bottleneck].max()
         fig.add_trace(
             go.Scatter(
-                x=self.blms.blm_mqx_df.time,
+                x=self.convert_time(self.blms.blm_mqx_df.time),
                 y=normalized_bottleneck_loss,
                 mode='lines',
                 name=self.blms.bottleneck,
@@ -230,7 +241,7 @@ class Tool():
 
         fig.add_trace(
             go.Scatter(
-                x=self.collimators.ref_col_blm_df.time.iloc[selected_peaks],
+                x=self.convert_time(self.collimators.ref_col_blm_df.time.iloc[selected_peaks]),
                 y=normalized_loss.iloc[selected_peaks],
                 mode='markers',
                 name='Peaks',
