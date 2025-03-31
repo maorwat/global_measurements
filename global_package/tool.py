@@ -435,6 +435,59 @@ class Tool():
             layout=Layout(width='300px')
         )
 
+        help_icon = widgets.Button(
+            description="?",
+            tooltip="Click for help",
+            layout=widgets.Layout(width="30px", height="30px")
+        )
+
+        help_output = widgets.Output()
+
+        # Single-column layout for instructions
+        help_text = widgets.HTML(
+            "<div style='text-align: left;'>"
+            "<b>Input Start and End Date/Time:</b><br>"
+            "Enter the desired start and end date and time for the analysis.<br>"
+
+            "<b>Select Beam:</b><br>"
+            "Choose the beam for which you want to perform the analysis.<br>"
+
+            "<b>Select Optics File:</b><br>"
+            "Select a TFS file from the MADX folder corresponding to the chosen beam "
+            "(e.g. <code>LHC_run3/machine_configurations/2022/MADX/injection/all_optics_B1.tfs</code>).<br>"
+
+            "<b>Reference Collimator and Bottleneck (Optional):</b><br>"
+            "If known, input the reference collimator and bottleneck in the respective fields "
+            "(e.g. Reference collimator: <code>TCP.D6L7.B1</code>, Bottleneck: <code>BLMQI.04L6.B1E30_MQY</code>).<br>"
+            "   - This will speed up the analysis.<br>"
+            "   - If left blank, they will be determined automatically.<br>"
+
+            "<b>Perform Analysis:</b><br>"
+            "After selecting the required inputs, click <b><i class='fa fa-star'></i> Analyse</b> to proceed.<br>"
+
+            "<b>Filter by Minimum Proton Count:</b><br>"
+            "To include only points with a minimum number of protons, enter the threshold value in the box.<br>"
+            "Then, click <b><i class='fa fa-bolt'></i> Find Peaks</b>.<br>"
+
+            "<b>Review and Rescale Peaks:</b><br>"
+            "All detected peaks will be displayed on the right.<br>"
+            "   - To regenerate graphs only with selected peaks, choose the desired peaks and click <b>Rescale</b>."
+            "</div>"
+        )
+
+        # Function to toggle the help display
+        def toggle_help(change):
+            with help_output:
+                help_output.clear_output()
+                if help_output.layout.display == "none":
+                    display(help_text)
+                    help_output.layout.display = "block"
+                else:
+                    help_output.layout.display = "none"
+
+        help_output.layout.display = "none"
+        help_icon.on_click(toggle_help)
+
         self.end_time_input = Text(
             description='End time (HH:MM:SS):',
             value=datetime.now().strftime('%H:%M:%S'),
@@ -512,7 +565,8 @@ class Tool():
                 self.start_date_picker, 
                 self.start_time_input, 
                 self.end_date_picker, 
-                self.end_time_input
+                self.end_time_input,
+                help_icon
             ],
             layout=Layout(
                 justify_content="space-around",
@@ -563,9 +617,9 @@ class Tool():
 
         # Arrange HBoxes in a VBox with custom styles
         self.widgets_vbox = VBox(
-            [self.row1, self.row2, self.row3],
+            [self.row1, help_output, self.row2, self.row3],
             layout=Layout(
-                align_items="center",
+                align_items="flex-start",
                 border="2px lightgray",
                 padding="0px",
                 width="90%"
@@ -715,6 +769,7 @@ class Tool():
             fig1 = self.everything_figure(self.valid_peaks)
             fig2, intersection = self.normalised_losses_figure(self.valid_peaks)
             self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
+            self.progress_label.value = f"Done!"
             if intersection:
                 self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
             else:
