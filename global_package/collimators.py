@@ -21,18 +21,21 @@ class Collimators():
                 emittance=3.5e-6,
                 yaml_path='/eos/project-c/collimation-team/machine_configurations/LHC_run3/2023/colldbs/injection.yaml'):
         """
-        Initialize the Collimators class for gap and loss data processing.
+        Initialise the Collimators class for gap and loss data processing.
+
+        This class handles collimator data retrieval, reference collimator selection,
+        optics scaling, and loss detection.
 
         Parameters:
-        - start_time: Start time for data.
-        - end_time: End time for data.
-        - beam: Beam identifier 'B1H', 'B2H', 'B1V', or 'B2V'.
-        - tfs_path:
-        - spark: Spark session for data processing.
-        - gap_step:
-        - reference_collimator:
-        - emittance:
-        - yaml_path:
+        - start_time (datetime): Start time for data retrieval.
+        - end_time (datetime): End time for data retrieval.
+        - beam (str): Beam identifier ('B1H', 'B2H', 'B1V', or 'B2V').
+        - tfs_path (str): Path to the TFS file containing optics data.
+        - spark (SparkSession): Spark session for distributed data processing.
+        - gap_step (float, optional): Step size for collimator gap movements (default: 0.1).
+        - reference_collimator (str, optional): Reference collimator to use (default: None).
+        - emittance (float, optional): Normalised emittance value in meters-radians (default: 3.5e-6).
+        - yaml_path (str, optional): Path to the YAML configuration file for collimators (default: injection.yaml).
         """
         # Convert time to UTC
         self.start_time, self.end_time = get_utc_time(start_time, end_time)
@@ -58,8 +61,13 @@ class Collimators():
         """
         Load and process collimator data.
 
+        This method retrieves collimator positions from the logging database.
+        If a reference collimator is provided, it attempts to load its data.
+        If not provided or incorrect, it automatically determines a suitable reference.
+
         Parameters:
-        - reference_collimator: 
+        - reference_collimator (str or None): The reference collimator name to use. If None, 
+        an appropriate reference is selected automatically.
         """
         # If reference collimator not given, find
         if reference_collimator is None or reference_collimator == '':
@@ -70,7 +78,12 @@ class Collimators():
             except: self.find_ref_collimator_and_load_data()
 
     def find_ref_collimator_and_load_data(self):
+        """
+        Automatically determine and load data for the reference collimator.
 
+        This method selects an appropriate reference collimator based on the beam plane
+        and retrieves its position data.
+        """   
         # Load the file  
         with open(self.yaml_path, 'r') as file:
             f = yaml.safe_load(file)
@@ -98,11 +111,11 @@ class Collimators():
 
     def load_data_given_ref_col(self, reference_collimator):
         """
-        Load data for the given reference collimator.
+        Load data for the reference collimator provided.
 
         Parameters:
-        - reference_collimator: 
-        """    
+        - reference_collimator (str): Reference collimator to use
+        """   
         col = self.ldb.get(reference_collimator+':MEAS_LVDT_GD', self.start_time, self.end_time)
 
         self.ref_col_df = pd.DataFrame({
@@ -118,12 +131,13 @@ class Collimators():
         Identify collimators that moved during the time interval.
 
         Parameters:
-        - cols: Dictionary containing collimator gap data
+        - cols (dict): Dictionary containing collimator gap data
         """
         # Create a dataframe
         data = {'time': cols[next(iter(cols))][0]}
         moved_collimators = pd.DataFrame(data)
-        moved_collimators['time'] = moved_collimators['time'].astype(int) # Change time to int to enable merging
+        # Change time to int to enable merging
+        moved_collimators['time'] = moved_collimators['time'].astype(int)
 
         # Find all the collimators that moved 
         # TODO: a bit inefficient, maybe change??

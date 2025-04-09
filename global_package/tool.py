@@ -18,16 +18,16 @@ from global_package.blms import BLMs
 
 class Tool():
     
-    def __init__(self, spark, prominence=0.05, initial_path='/eos/project-c/collimation-team/machine_configurations/'):
+    def __init__(self, spark, initial_path='/eos/project-c/collimation-team/machine_configurations/'):
         """
         Initialize the Tool class with a Spark session.
         
         Parameters:
         - spark: Spark session to be used for data loading and processing.
+        - initial_path: Initial path appearing in the file chooser.
         """
         self.spark = spark
         self.initial_path = initial_path
-        self.prominence = prominence
 
         self.create_widgets()
 
@@ -77,13 +77,14 @@ class Tool():
         Load Beam Loss Monitors (BLMs) data.
 
         Parameters:
-        - option: Option identifier for finding the bottleneck, to remove that (default: 3).
+        - option: Option identifier for finding the bottleneck (default: 2).
         - filter_out_collimators: Whether to exclude collimator losses 
-            in bottleneck selection (default: True).
+            in bottleneck selection (default: False).
         - threshold: Threshold value to identify noise (default: 0.8).
         - bottleneck: String for the bottleneck (default: None).
         """
         reference_collimator_blm = self.collimators.reference_collimator_blm.split(':')[0]
+
         self.blms = BLMs(
             start_time=self.start_time,
             end_time=self.end_time,
@@ -162,6 +163,16 @@ class Tool():
         })
 
     def convert_time(self, time_in_df):
+        """
+        Convert time to Zurich timezone
+
+        Parameters:
+        - time_in_df (pandas.Series): A pandas Series of timestamps in seconds 
+        (UTC timezone) that need to be converted to the Zurich timezone.
+
+        Returns:
+        - pandas.Series: A pandas Series containing the timestamps converted to the Zurich timezone.
+        """
 
         zurich_tz = pytz.timezone("Europe/Zurich")
 
@@ -291,17 +302,26 @@ class Tool():
     
     def _normalise_again(self, array):
         """
-        Normalize an array by dividing by its maximum value.
+        Normalise an array by dividing by its maximum value.
+
+        Parameters:
+        - array: Array to normalise
         """
         return array / array.max()
 
     def _normalise_blm_data(self, df_blm, column, selected_peaks=None):
         """
-        Normalize BLM data by dividing loss values by protons lost.
+        Normalise BLM data by dividing loss values by protons lost.
 
         Parameters:
-        - df_blm: DataFrame containing BLM data.
-        - column: The column name in the DataFrame to normalize.
+        - df_blm (pandas.DataFrame): The DataFrame containing BLM data, where one of the columns 
+        holds the loss values to be normalized.
+        - column (str): The name of the column in the DataFrame to normalise (typically containing loss values).
+        - selected_peaks (list, optional): A list of indices representing the specific peaks to normalise.
+            If `None`, all data points will be used for the normalisation.
+
+        Returns:
+        - numpy.ndarray: A NumPy array of normalised values, either for all peaks or for the selected ones.
         """
         loss_values = df_blm[column].iloc[self.collimators.peaks.peaks.values].values
         protons_lost_values = self.bunches.protons_lost.protons_lost.values
@@ -314,6 +334,10 @@ class Tool():
     def normalised_losses_figure(self, selected_peaks=None):
         """
         Create a figure for normalized losses at the collimator and bottleneck.
+
+        Parameters:
+        - selected_peaks (list, optional): A list of indices representing the specific peaks to plot.
+            If `None`, all data points will be used for the plotting.
         """
         # Normalize losses
         normalised_col_blm = self._normalise_blm_data(
@@ -757,7 +781,7 @@ class Tool():
 
             # Load bunch intensities and find peaks
             self.progress_label.value = 'Loading bunch intensities...'
-            self.load_bunches(prominence=self.prominence)
+            self.load_bunches()
             self.find_enough_protons_peaks()
 
             # Filter and update multi-select options
