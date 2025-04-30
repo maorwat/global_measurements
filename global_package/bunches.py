@@ -7,7 +7,7 @@ import numpy as np
 from global_package.utils import *
 
 class Bunches:
-    def __init__(self, start_time, end_time, beam, spark, peaks, all_peaks):
+    def __init__(self, start_time, end_time, beam, spark, peaks, all_peaks, bunch=None):
         """
         Initialize the Bunches class for processing bunch intensity data.
 
@@ -30,6 +30,7 @@ class Bunches:
 
         # Load and process bunch intensity data
         self.get_bunches()
+        self.find_used_bunch(bunch)
         self.smooth_bunch_intensity()
         self.get_protons_lost()
 
@@ -57,12 +58,17 @@ class Bunches:
 
         # Remove columns where all values are zero
         columns = [col for col in df if (df[col] == 0).all()]
-        df = pd.concat([df, bunch_data_df], axis=1).drop(columns=columns)
+        self.all_bunches = pd.concat([df, bunch_data_df], axis=1).drop(columns=columns)
 
+    def find_used_bunch(self, bunch):
         # Compute the drop in intensity for each bunch and find the maximum drop
-        drops = df.iloc[0] - df.iloc[-1]
-        self.bunch = drops.idxmax()
-        self.bunch_df = df[['time', self.bunch]]
+        try: 
+            self.bunch = f'Bunch {bunch}'
+            self.bunch_df = self.all_bunches[['time', self.bunch]]
+        except:
+            drops = self.all_bunches.iloc[0] - self.all_bunches.iloc[-1]
+            self.bunch = drops.idxmax()
+            self.bunch_df = self.all_bunches[['time', self.bunch]]
 
     def smooth_bunch_intensity(self):
         """

@@ -98,7 +98,7 @@ class Tool():
             reference_collimator_blm=reference_collimator_blm
         )
 
-    def load_bunches(self, prominence=0.05, min_separation=5):
+    def load_bunches(self, bunch, prominence=0.05, min_separation=5):
         """
         Load bunch intensity data and identify peaks.
 
@@ -115,7 +115,8 @@ class Tool():
             beam=self.beam,
             spark=self.spark,
             peaks=self.collimators.peaks,  # Use collimator peaks
-            all_peaks=self.all_peaks         # Use combined peaks
+            all_peaks=self.all_peaks,         # Use combined peaks
+            bunch=bunch
         )
 
     def find_all_peaks(self, prominence, min_separation):
@@ -315,7 +316,7 @@ class Tool():
 
         Parameters:
         - df_blm (pandas.DataFrame): The DataFrame containing BLM data, where one of the columns 
-        holds the loss values to be normalized.
+        holds the loss values to be normalised.
         - column (str): The name of the column in the DataFrame to normalise (typically containing loss values).
         - selected_peaks (list, optional): A list of indices representing the specific peaks to normalise.
             If `None`, all data points will be used for the normalisation.
@@ -388,6 +389,126 @@ class Tool():
                 np.array(selected_gaps), 
                 self._normalise_again(normalised_col_blm),
                 self._normalise_again(normalised_bottleneck_blm))
+        except: intersection = None
+
+        return fig, intersection
+
+    def a_little_normalised_losses_figure(self, selected_peaks=None):
+        """
+        Create a figure for normalized losses at the collimator and bottleneck.
+
+        Parameters:
+        - selected_peaks (list, optional): A list of indices representing the specific peaks to plot.
+            If `None`, all data points will be used for the plotting.
+        """
+        # Normalize losses
+        normalised_col_blm = self._normalise_blm_data(
+            self.collimators.ref_col_blm_df, 'loss', selected_peaks)
+        normalised_bottleneck_blm = self._normalise_blm_data(
+            self.blms.blm_mqx_df, self.blms.bottleneck, selected_peaks)
+
+        if selected_peaks is None: 
+            selected_gaps = self.collimators.gaps
+        else: 
+            selected_gaps = self.collimators.gaps.values[selected_peaks]
+
+        # Create figure
+        fig = go.Figure()
+
+        # Add normalized collimator trace
+        fig.add_trace(
+            go.Scatter(
+                x=selected_gaps,
+                y=normalised_col_blm,
+                mode='lines+markers',
+                name='Collimator',
+                line=dict(color='#2E8B57')
+            )
+        )
+
+        # Add normalized bottleneck trace
+        fig.add_trace(
+            go.Scatter(
+                x=selected_gaps,
+                y=normalised_bottleneck_blm,
+                mode='lines+markers',
+                name='Bottleneck',
+                line=dict(color='orange')
+            )
+        )
+
+        # Update layout
+        fig.update_layout(
+            width=800,
+            height=600,
+            xaxis=dict(title=f'Collimator setting [\u03C3]'),
+            yaxis=dict(title='Normalised BLM signal'),
+        )
+        try:
+            # Find the intersection between the two lines
+            intersection = self.find_trace_intersections(
+                np.array(selected_gaps), 
+                normalised_col_blm,
+                normalised_bottleneck_blm)
+        except: intersection = None
+
+        return fig, intersection
+        
+    def not_normalised_losses_figure(self, selected_peaks=None):
+        """
+        Create a figure for NOT normalised losses at the collimator and bottleneck.
+
+        Parameters:
+        - selected_peaks (list, optional): A list of indices representing the specific peaks to plot.
+            If `None`, all data points will be used for the plotting.
+        """
+        # Normalize losses
+        not_normalised_col_blm = self.collimators.ref_col_blm_df['loss'].iloc[self.collimators.peaks.peaks.values].values
+        not_normalised_bottleneck_blm = self.blms.blm_mqx_df[self.blms.bottleneck].iloc[self.collimators.peaks.peaks.values].values
+
+        if selected_peaks is None: 
+            selected_gaps = self.collimators.gaps
+        else: 
+            selected_gaps = self.collimators.gaps.values[selected_peaks]
+            
+        # Create figure
+        fig = go.Figure()
+
+        # Add normalized collimator trace
+        fig.add_trace(
+            go.Scatter(
+                x=selected_gaps,
+                y=not_normalised_col_blm,
+                mode='lines+markers',
+                name='Collimator',
+                line=dict(color='#2E8B57')
+            )
+        )
+
+        # Add normalized bottleneck trace
+        fig.add_trace(
+            go.Scatter(
+                x=selected_gaps,
+                y=not_normalised_bottleneck_blm,
+                mode='lines+markers',
+                name='Bottleneck',
+                line=dict(color='orange')
+            )
+        )
+
+        # Update layout
+        fig.update_layout(
+            width=800,
+            height=600,
+            xaxis=dict(title=f'Collimator setting [\u03C3]'),
+            yaxis=dict(title='Normalised BLM signal'),
+        )
+        try:
+            # Find the intersection between the two lines
+            intersection = self.find_trace_intersections(
+                np.array(selected_gaps), 
+                not_normalised_col_blm,
+                not_normalised_bottleneck_blm)
         except: intersection = None
 
         return fig, intersection
@@ -485,13 +606,14 @@ class Tool():
             "(e.g. Reference collimator: <code>TCP.D6L7.B1</code>, Bottleneck: <code>BLMQI.04L6.B1E30_MQY</code>).<br>"
             "   - This will speed up the analysis.<br>"
             "   - If left blank, they will be determined automatically.<br>"
+            "   - You can also input a string into the bottleneck box to filter the BLMs (e.g. 4L6) to consider only BLMs including this string in the name.<br>"
 
             "<b>Perform Analysis:</b><br>"
             "After selecting the required inputs, click <b><i class='fa fa-star'></i> Analyse</b> to proceed.<br>"
 
             "<b>Filter by Minimum Proton Count:</b><br>"
             "To include only points with a minimum number of protons, enter the threshold value in the box.<br>"
-            "Then, click <b><i class='fa fa-bolt'></i> Find Peaks</b>.<br>"
+            "Then, click <b>Find Peaks</b>.<br>"
 
             "<b>Review and Rescale Peaks:</b><br>"
             "All detected peaks will be displayed on the right.<br>"
@@ -534,8 +656,7 @@ class Tool():
         )
 
         self.min_protons_lost_button = Button(
-            description="Find peaks", 
-            icon="bolt",
+            description="Find peaks",
             style=widgets.ButtonStyle(button_color='pink')
         )
         self.min_protons_lost_button.on_click(self.on_min_protons_lost_button_clicked)
@@ -552,6 +673,13 @@ class Tool():
             description='Bottleneck:',
             style={'description_width': 'initial'},
             layout=Layout(width='300px')
+        )
+
+        self.bunch_input = Text(
+            value='',
+            description='Bunch:',
+            style={'description_width': 'initial'},
+            layout=Layout(width='100px')
         )
 
         self.reference_collimator_label = Label(
@@ -625,6 +753,7 @@ class Tool():
                 self.progress_label, 
                 self.reference_collimator_input, 
                 self.bottleneck_input, 
+                self.bunch_input,
                 self.reference_collimator_label, 
                 self.bottleneck_label, 
                 self.intersection_label
@@ -781,7 +910,9 @@ class Tool():
 
             # Load bunch intensities and find peaks
             self.progress_label.value = 'Loading bunch intensities...'
-            self.load_bunches()
+            try: bunch = int(self.bunch_input.value)
+            except: bunch = None
+            self.load_bunches(bunch)
             self.find_enough_protons_peaks()
 
             # Filter and update multi-select options
@@ -838,6 +969,7 @@ class Tool():
             fig1 = self.everything_figure(selected_peaks)
             fig2, intersection = self.normalised_losses_figure(selected_peaks)
             self.row4.children = [go.FigureWidget(fig1), go.FigureWidget(fig2)]
+            self.progress_label.value = f"Done!"
             if intersection:
                 self.intersection_label.value = f'Intersection: {intersection:.2f} \u03C3'
             else:
